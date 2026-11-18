@@ -7,11 +7,20 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
-from app.database import get_overview_stats, get_round_statistics, init_db, save_submission
+from app.auth import SESSION_COOKIE_NAME, create_session_token, parse_session_token, verify_password
+from app.database import (
+    create_user,
+    get_overview_stats,
+    get_round_statistics,
+    get_user_by_username,
+    init_db,
+    save_submission,
+)
 from app.grader import grade_workbook
 from app.models import GradingResponse
 
@@ -48,9 +57,93 @@ app = FastAPI(
 )
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=2, max_length=30)
+    password: str = Field(..., min_length=4, max_length=100)
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=2, max_length=30)
+    password: str = Field(..., min_length=4, max_length=100)
+    display_name: str = Field(..., min_length=1, max_length=30)
+    role: str = Field(default="student", pattern="^(student|teacher)$")
+
+
+def get_optional_user(
+    session_token: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict[str, Any] | None:
+    return parse_session_token(session_token)
+
+
+def require_current_user(
+    user: dict[str, Any] | None = Depends(get_optional_user),
+) -> dict[str, Any]:
+    if user is None:
+        raise HTTPException(status_code=401, detail="채점을 진행하려면 먼저 로그인해야 합니다.")
+    return user
+
+
 @app.get("/")
 async def index_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/auth/me")
+async def auth_me(user: dict[str, Any] | None = Depends(get_optional_user)) -> dict[str, Any]:
+    return {"authenticated": user is not None, "user": user}
+
+
+@app.post("/api/auth/login")
+async def auth_login(body: LoginRequest, response: Response) -> dict[str, Any]:
+    user = get_user_by_username(body.username.strip())
+    if not user or not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 올바르지 않습니다.")
+
+    token = create_session_token(user)
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    return {
+        "authenticated": True,
+        "user": {
+            "username": user["username"],
+            "display_name": user["display_name"],
+            "role": user["role"],
+        },
+    }
+
+
+@app.post("/api/auth/register")
+async def auth_register(body: RegisterRequest, response: Response) -> dict[str, Any]:
+    username = body.username.strip()
+    if get_user_by_username(username):
+        raise HTTPException(status_code=409, detail="이미 사용 중인 아이디입니다.")
+
+    user = create_user(
+        username=username,
+        password=body.password,
+        display_name=body.display_name.strip(),
+        role=body.role,
+    )
+    token = create_session_token(user)
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,
+    )
+    return {"authenticated": True, "user": user}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(response: Response) -> dict[str, bool]:
+    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    return {"ok": True}
 
 
 @app.get("/statistics")
@@ -103,6 +196,7 @@ async def grade_file(
     teacher_id: str = Form(""),
     student_nickname: str = Form(""),
     file: UploadFile = File(...),
+    current_user: dict[str, Any] = Depends(require_current_user),
 ) -> GradingResponse:
     filename = file.filename or "uploaded.xlsm"
     if not filename.lower().endswith((".xlsm", ".xlsx")):
@@ -111,13 +205,18 @@ async def grade_file(
     round_info = get_round_by_id(round_id)
     file_bytes = await file.read()
 
+    resolved_teacher = teacher_id.strip() or (
+        current_user["username"] if current_user.get("role") == "teacher" else ""
+    )
+    resolved_student = student_nickname.strip() or current_user.get("display_name", "")
+
     try:
         result = grade_workbook(
             file_bytes=file_bytes,
             filename=filename,
             round_info=round_info,
-            teacher_id=teacher_id.strip(),
-            student_nickname=student_nickname.strip(),
+            teacher_id=resolved_teacher,
+            student_nickname=resolved_student,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"엑셀 파일 분석 중 오류가 발생했습니다: {exc}") from exc

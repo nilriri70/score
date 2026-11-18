@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from app.auth import hash_password
+
 
 def _resolve_db_path() -> Path:
     """Vercel 등 읽기 전용 환경에서는 /tmp 경로를 사용합니다."""
@@ -58,10 +60,62 @@ def init_db() -> None:
             """
         )
 
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            )
+            """
+        )
+
+        user_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        if user_count == 0:
+            _seed_demo_users(conn)
+
         count = conn.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
         if count == 0:
             _seed_demo_data(conn)
     _INITIALIZED = True
+
+
+def _seed_demo_users(conn: sqlite3.Connection) -> None:
+    """테스트용 기본 학생/선생님 계정을 시드합니다."""
+    demo_users = [
+        ("student1", hash_password("1234"), "홍길동", "student"),
+        ("teacher1", hash_password("1234"), "김선생", "teacher"),
+    ]
+    conn.executemany(
+        "INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
+        demo_users,
+    )
+
+
+def get_user_by_username(username: str) -> dict[str, Any] | None:
+    """아이디로 사용자 정보를 조회합니다."""
+    _ensure_initialized()
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, username, password_hash, display_name, role FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def create_user(username: str, password: str, display_name: str, role: str = "student") -> dict[str, Any]:
+    """새 사용자를 등록합니다."""
+    _ensure_initialized()
+    pw_hash = hash_password(password)
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)",
+            (username, pw_hash, display_name, role),
+        )
+    return {"username": username, "display_name": display_name, "role": role}
 
 
 def _ensure_initialized() -> None:

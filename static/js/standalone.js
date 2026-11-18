@@ -1,6 +1,13 @@
 /* global Chart, XLSX */
 let HAS_SERVER = false;
 const STORAGE_KEY = "comlicense_score_submissions_v1";
+const USERS_KEY = "comlicense_score_users_v1";
+const SESSION_KEY = "comlicense_score_session_v1";
+
+const DEFAULT_LOCAL_USERS = [
+  { username: "student1", password: "1234", display_name: "홍길동", role: "student" },
+  { username: "teacher1", password: "1234", display_name: "김선생", role: "teacher" },
+];
 
 const DEFAULT_ROUNDS = [
   { id: "sample_01", name: "대표기출따라하기", file: "data/problems/sample_01.xlsm" },
@@ -31,12 +38,15 @@ const state = {
   pieCharts: {},
   selectedFile: null,
   lastResult: null,
+  currentUser: null,
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
   HAS_SERVER = await detectFastApiServer();
   initLocalStore();
   initDialogs();
+  initAuthUI();
+  await restoreSession();
   initNoticeBanner();
   initFileUpload();
   await initRoundSelector();
@@ -61,6 +71,168 @@ function initLocalStore() {
   if (HAS_SERVER) return;
   if (!localStorage.getItem(STORAGE_KEY)) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_SUBMISSIONS));
+  }
+  if (!localStorage.getItem(USERS_KEY)) {
+    localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_LOCAL_USERS));
+  }
+}
+
+function initAuthUI() {
+  const authDialog = document.getElementById("auth-dialog");
+  const openAuthBtn = document.getElementById("open-auth-btn");
+  const logoutBtn = document.getElementById("logout-btn");
+  const tabLogin = document.getElementById("tab-login");
+  const tabRegister = document.getElementById("tab-register");
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const loginErr = document.getElementById("login-error");
+  const regErr = document.getElementById("register-error");
+
+  openAuthBtn?.addEventListener("click", () => authDialog?.showModal());
+  authDialog?.addEventListener("close", () => {
+    authDialog.returnValue = "";
+  });
+
+  tabLogin?.addEventListener("click", () => {
+    tabLogin.classList.add("is-active");
+    tabRegister?.classList.remove("is-active");
+    if (loginForm) loginForm.hidden = false;
+    if (registerForm) registerForm.hidden = true;
+  });
+
+  tabRegister?.addEventListener("click", () => {
+    tabRegister.classList.add("is-active");
+    tabLogin?.classList.remove("is-active");
+    if (registerForm) registerForm.hidden = false;
+    if (loginForm) loginForm.hidden = true;
+  });
+
+  loginForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (loginErr) loginErr.hidden = true;
+    const username = document.getElementById("login-username").value.trim();
+    const password = document.getElementById("login-password").value;
+
+    try {
+      let user;
+      if (HAS_SERVER) {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "로그인에 실패했습니다.");
+        user = data.user;
+      } else {
+        const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+        const found = users.find((u) => u.username === username && u.password === password);
+        if (!found) throw new Error("아이디 또는 비밀번호가 올바르지 않습니다.");
+        user = { username: found.username, display_name: found.display_name, role: found.role };
+        localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+      }
+      applyUserSession(user);
+      authDialog?.close("ok");
+    } catch (err) {
+      if (loginErr) {
+        loginErr.textContent = err.message;
+        loginErr.hidden = false;
+      }
+    }
+  });
+
+  registerForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (regErr) regErr.hidden = true;
+    const username = document.getElementById("reg-username").value.trim();
+    const display_name = document.getElementById("reg-display-name").value.trim();
+    const role = document.getElementById("reg-role").value;
+    const password = document.getElementById("reg-password").value;
+
+    try {
+      let user;
+      if (HAS_SERVER) {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, display_name, role, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "회원가입에 실패했습니다.");
+        user = data.user;
+      } else {
+        const users = JSON.parse(localStorage.getItem(USERS_KEY) || "[]");
+        if (users.some((u) => u.username === username)) {
+          throw new Error("이미 사용 중인 아이디입니다.");
+        }
+        users.push({ username, password, display_name, role });
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+        user = { username, display_name, role };
+        localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+      }
+      applyUserSession(user);
+      authDialog?.close("ok");
+    } catch (err) {
+      if (regErr) {
+        regErr.textContent = err.message;
+        regErr.hidden = false;
+      }
+    }
+  });
+
+  logoutBtn?.addEventListener("click", async () => {
+    if (HAS_SERVER) {
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
+    applyUserSession(null);
+  });
+}
+
+async function restoreSession() {
+  if (HAS_SERVER) {
+    try {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      applyUserSession(data.authenticated ? data.user : null);
+    } catch {
+      applyUserSession(null);
+    }
+    return;
+  }
+
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    applyUserSession(raw ? JSON.parse(raw) : null);
+  } catch {
+    applyUserSession(null);
+  }
+}
+
+function applyUserSession(user) {
+  state.currentUser = user;
+  const userLabel = document.getElementById("auth-status-user");
+  const openAuthBtn = document.getElementById("open-auth-btn");
+  const logoutBtn = document.getElementById("logout-btn");
+  const teacherInput = document.getElementById("teacher-id");
+  const studentInput = document.getElementById("student-nickname");
+
+  if (user) {
+    const roleLabel = user.role === "teacher" ? "선생님" : "학생";
+    if (userLabel) userLabel.textContent = `👤 ${user.display_name} (${roleLabel})`;
+    if (openAuthBtn) openAuthBtn.hidden = true;
+    if (logoutBtn) logoutBtn.hidden = false;
+    if (user.role === "teacher" && teacherInput && !teacherInput.value) {
+      teacherInput.value = user.username;
+    }
+    if (user.role === "student" && studentInput && !studentInput.value) {
+      studentInput.value = user.display_name;
+    }
+  } else {
+    if (userLabel) userLabel.textContent = "비로그인 (채점 시 로그인 필요)";
+    if (openAuthBtn) openAuthBtn.hidden = false;
+    if (logoutBtn) logoutBtn.hidden = true;
   }
 }
 
@@ -194,6 +366,12 @@ function initGradingForm() {
 
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
+
+    if (!state.currentUser) {
+      alert("채점을 시작하려면 먼저 로그인해주세요.");
+      document.getElementById("auth-dialog")?.showModal();
+      return;
+    }
 
     if (!state.selectedFile) {
       alert("채점할 엑셀 파일(.xlsm 또는 .xlsx)을 먼저 선택해주세요.");
