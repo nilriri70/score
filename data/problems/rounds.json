@@ -14,7 +14,33 @@
       "basic_3": {
         "require_cf": false
       },
-      "calc": [],
+      "calc": [
+        {
+          "title": "계산작업 1번 ([표1] 도착시간)",
+          "cells": ["D3"],
+          "expected_values": ["08:30"]
+        },
+        {
+          "title": "계산작업 2번 ([표2] 부서별 실적)",
+          "cells": ["I3"],
+          "expected_values": ["달성"]
+        },
+        {
+          "title": "계산작업 3번 ([표3] 드라마 예매량 평균)",
+          "cells": ["D24"],
+          "expected_values": ["21881"]
+        },
+        {
+          "title": "계산작업 4번 ([표4] 당첨층)",
+          "cells": ["J14"],
+          "expected_values": ["15"]
+        },
+        {
+          "title": "계산작업 5번 ([표5] 수강과목)",
+          "cells": ["E28"],
+          "expected_values": ["한글"]
+        }
+      ],
       "analysis_1": {
         "cells": {}
       },

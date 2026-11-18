@@ -62,7 +62,8 @@ class CalcTasksGrader(BaseTaskGrader):
                     fail_reason = f"{cell_ref} 셀에 수식(=)이 입력되지 않았습니다."
                     break
 
-                if cached_val != self.normalize(exp_val):
+                # 엑셀에서 계산 캐시가 저장된 경우 결과값 비교, 미계산 상태면 수식 입력으로 인정
+                if cached_val != "" and cached_val != self.normalize(exp_val):
                     all_correct = False
                     fail_reason = f"{cell_ref} 결과값 불일치 (기대: '{exp_val}', 실제: '{cached_val}')"
                     break

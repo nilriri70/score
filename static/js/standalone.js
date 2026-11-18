@@ -257,14 +257,33 @@ async function gradeLocallyInBrowser(file, roundId, teacherId, studentNickname) 
   if (names.has("기본작업-3")) p1 += 5;
   else deductions.push({ problem_no: "문제1-3", task_name: "기본작업-3 (고급필터/조건부서식)", deduction: -5, detail: "'기본작업-3' 시트 누락" });
 
-  // 문제2: 계산작업 (40점) - 뼈대 기준 안내
-  const p2 = 0;
-  deductions.push({
-    problem_no: "문제2-1~5",
-    task_name: "계산작업 (함수 5문항)",
-    deduction: -40,
-    detail: "로컬 미리보기 뼈대 모드입니다. 세부 수식/매크로 채점은 FastAPI 서버와 정답 스펙 연동 시 활성화됩니다.",
-  });
+  // 문제2: 계산작업 (40점 — 5문항 × 8점, 부분점수 없음)
+  let p2 = 0;
+  const calcWs = wb.Sheets["계산작업"];
+  const calcCells = [
+    { cell: "D3", title: "계산작업 1번 ([표1] 도착시간)" },
+    { cell: "I3", title: "계산작업 2번 ([표2] 부서별 실적)" },
+    { cell: "D24", title: "계산작업 3번 ([표3] 드라마 예매량 평균)" },
+    { cell: "J14", title: "계산작업 4번 ([표4] 당첨층)" },
+    { cell: "E28", title: "계산작업 5번 ([표5] 수강과목)" },
+  ];
+  if (!calcWs) {
+    deductions.push({ problem_no: "문제2", task_name: "계산작업", deduction: -40, detail: "'계산작업' 시트 누락" });
+  } else {
+    calcCells.forEach((q, idx) => {
+      const cellObj = calcWs[q.cell];
+      if (cellObj && cellObj.f) {
+        p2 += 8;
+      } else {
+        deductions.push({
+          problem_no: `문제2-${idx + 1}`,
+          task_name: q.title,
+          deduction: -8,
+          detail: `${q.cell} 셀에 수식(=)이 입력되지 않았습니다.`,
+        });
+      }
+    });
+  }
 
   // 문제3: 분석작업 (20점)
   let p3 = 0;
