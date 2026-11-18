@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>자격증 자동채점 프로그램 - 컴퓨터활용능력 2급 실기</title>
+  <link rel="stylesheet" href="static/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
+  <script src="static/js/standalone.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <nav class="topbar-inner" aria-label="주 메뉴">
+      <a href="index.html" class="topbar-link" aria-current="page">🏠 채점프로그램 Home</a>
+      <button type="button" class="topbar-link" id="open-help-btn">❓ 도움말</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="card notice-card" id="notice-banner" aria-label="사이트 유의사항">
+      <button type="button" class="notice-close" id="close-notice-btn" aria-label="유의사항 닫기">✕</button>
+      <div class="notice-cover">컴퓨터활용능력<br />2급 실기<br />자동채점</div>
+      <div class="notice-body">
+        <h2>ℹ️ 사이트 유의사항</h2>
+        <p>이 파일(<code>index.html</code>)은 브라우저에서 바로 열어 실행하거나 FastAPI 서버와 연동해 사용할 수 있습니다.</p>
+        <p>합격 기준: 100점 만점 중 70점 이상 합격 (기본작업 20점 · 계산작업 40점 · 분석작업 20점 · 기타작업 20점)</p>
+      </div>
+    </section>
+
+    <div class="main-grid">
+      <div class="left-column">
+        <section class="card" aria-labelledby="select-type-heading">
+          <div class="card-header">
+            <h2 class="card-title" id="select-type-heading">📋 문제 유형 선택</h2>
+            <span class="badge badge-blue" id="timer-badge">⏱️ 40:00</span>
+          </div>
+
+          <form id="grade-form" class="form-rows">
+            <div class="form-row">
+              <label class="form-label" for="round-select">회차 선택</label>
+              <select class="form-select" id="round-select" name="round_id"></select>
+            </div>
+
+            <div class="form-row">
+              <span class="form-label">문제 파일</span>
+              <div class="two-col-inputs">
+                <a class="btn" id="download-round-btn" href="data/problems/sample_01.xlsm" download>⬇ 해당회차 다운</a>
+                <a class="btn" href="data/problems/sample_01.xlsm" download>🗂 샘플 다운</a>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <span class="form-label">정보 입력</span>
+              <div class="two-col-inputs">
+                <input type="text" class="form-control" id="teacher-id" name="teacher_id" placeholder="선생님 ID" maxlength="30" />
+                <input type="text" class="form-control" id="student-nickname" name="student_nickname" placeholder="학생 닉네임" maxlength="30" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <span class="form-label">작성 파일</span>
+              <label class="upload-box" id="upload-dropzone" for="file-input">
+                <input type="file" id="file-input" name="file" accept=".xlsm,.xlsx" />
+                <span id="file-label">☁️ 채점할 파일 선택 (.xlsm / .xlsx)</span>
+              </label>
+            </div>
+
+            <div class="action-footer">
+              <span class="badge badge-amber" id="queue-badge">대기자 0</span>
+              <div class="action-buttons">
+                <button type="submit" class="btn btn-primary" id="start-grade-btn">✅ 채점시작</button>
+                <button type="button" class="btn" id="print-btn">🖨 인쇄</button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <section class="card" aria-labelledby="section-score-heading">
+          <div class="card-header">
+            <h2 class="card-title" id="section-score-heading">🎓 작업별 상세 점수</h2>
+            <span class="badge" id="pass-badge" hidden>대기</span>
+          </div>
+
+          <div class="score-list">
+            <div class="score-row">
+              <span class="problem-tag">문제1</span>
+              <span class="score-label">기본작업 [20점]</span>
+              <span class="score-value" id="score-p1">-</span>
+            </div>
+            <div class="score-row">
+              <span class="problem-tag">문제2</span>
+              <span class="score-label">계산작업 [40점]</span>
+              <span class="score-value" id="score-p2">-</span>
+            </div>
+            <div class="score-row">
+              <span class="problem-tag">문제3</span>
+              <span class="score-label">분석작업 [20점]</span>
+              <span class="score-value" id="score-p3">-</span>
+            </div>
+            <div class="score-row">
+              <span class="problem-tag">문제4</span>
+              <span class="score-label">기타작업 [20점]</span>
+              <span class="score-value" id="score-p4">-</span>
+            </div>
+          </div>
+
+          <div class="total-score-banner">
+            <div class="total-score-caption">TOTAL SCORE</div>
+            <div class="total-score-number"><span id="total-score">0</span> 점</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card deduction-card" aria-labelledby="deduction-heading">
+        <div class="card-header">
+          <h2 class="card-title" id="deduction-heading">📑 감점 내역 및 분석</h2>
+          <div class="action-buttons">
+            <span class="badge badge-blue">👤 인원: <span id="participant-count">0</span>명</span>
+            <span class="badge badge-teal">📊 평균: <span id="average-score">0</span>점</span>
+          </div>
+        </div>
+
+        <div tabindex="0" role="region" aria-labelledby="deduction-table-caption" class="table-wrapper">
+          <table class="deduction-table">
+            <caption id="deduction-table-caption">감점 내역 및 오류 상세 분석</caption>
+            <thead>
+              <tr>
+                <th scope="col">문제번호</th>
+                <th scope="col">작업내용</th>
+                <th scope="col">감점</th>
+                <th scope="col">오류 상세내용</th>
+              </tr>
+            </thead>
+            <tbody id="deduction-tbody">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                  채점할 엑셀 파일(.xlsm/.xlsx)을 선택한 뒤 [채점시작]을 눌러주세요.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div class="center-actions">
+      <a class="btn btn-dark" id="statistics-link" href="/statistics?round_id=sample_01">📊 점수별 통계보기</a>
+      <button type="button" class="btn btn-danger" id="open-video-btn">▶ 동영상 강좌</button>
+    </div>
+
+    <div class="ranking-grid">
+      <section class="card" aria-labelledby="student-rank-heading">
+        <div class="card-header">
+          <h2 class="card-title" id="student-rank-heading">🏆 학생 누적점수 순위</h2>
+        </div>
+        <div class="chart-box">
+          <canvas id="student-rank-chart"></canvas>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="teacher-rank-heading">
+        <div class="card-header">
+          <h2 class="card-title" id="teacher-rank-heading">✨ 선생님 누적점수 순위</h2>
+        </div>
+        <div class="chart-box">
+          <canvas id="teacher-rank-chart"></canvas>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    © 2026 컴퓨터활용능력 2급 실기 자동채점 프로그램 (뼈대)
+  </footer>
+
+  <!-- 도움말 모달 -->
+  <dialog id="help-dialog" aria-labelledby="help-dialog-title">
+    <div class="dialog-header">
+      <h2 id="help-dialog-title">컴퓨터활용능력 2급 실기 채점 기준</h2>
+    </div>
+    <div class="dialog-body">
+      <p><strong>합격 기준:</strong> 100점 만점에 70점 이상 합격</p>
+      <ul>
+        <li><strong>기본작업 (20점):</strong> 기본작업-1 (5점, 부분점수 없음), 기본작업-2 (10점, 5문항×2점 부분점수), 기본작업-3 (5점, 부분점수 없음)</li>
+        <li><strong>계산작업 (40점):</strong> 함수 5문제 (각 8점, 부분점수 없음, 결과값 기준 채점)</li>
+        <li><strong>분석작업 (20점):</strong> 피벗/시나리오/목표값 등 2문제 (각 10점, 부분점수 없음)</li>
+        <li><strong>기타작업 (20점):</strong> 매크로 2문제 (각 5점, 부분점수 있음), 차트 5문항 (각 2점, 부분점수 있음)</li>
+      </ul>
+    </div>
+    <div class="dialog-footer">
+      <form method="dialog">
+        <button class="btn btn-dark" value="close" autofocus>닫기</button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- 동영상 강좌 안내 모달 -->
+  <dialog id="video-dialog" aria-labelledby="video-dialog-title">
+    <div class="dialog-header">
+      <h2 id="video-dialog-title">동영상 강좌 안내</h2>
+    </div>
+    <div class="dialog-body">
+      <p>이 영역에는 회차별 풀이 동영상 강좌 링크 또는 임베드 플레이어를 연결할 수 있습니다.</p>
+    </div>
+    <div class="dialog-footer">
+      <form method="dialog">
+        <button class="btn btn-dark" value="close" autofocus>닫기</button>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- 로컬 실행용 점수별 통계 보기 모달 -->
+  <dialog id="stats-dialog" aria-labelledby="stats-dialog-title" style="max-inline-size: min(920px, 95dvw); inline-size: 100%;">
+    <div class="dialog-header">
+      <h2 id="stats-dialog-title">📊 해당 회차 점수별 통계보기</h2>
+    </div>
+    <div class="dialog-body" style="display: flex; flex-direction: column; gap: 1rem;">
+      <div class="pie-box" style="block-size: 240px;">
+        <canvas id="modal-chart-total"></canvas>
+      </div>
+      <div class="stats-sub-grid">
+        <div class="pie-box" style="block-size: 210px;"><canvas id="modal-chart-p1"></canvas></div>
+        <div class="pie-box" style="block-size: 210px;"><canvas id="modal-chart-p2"></canvas></div>
+        <div class="pie-box" style="block-size: 210px;"><canvas id="modal-chart-p3"></canvas></div>
+        <div class="pie-box" style="block-size: 210px;"><canvas id="modal-chart-p4"></canvas></div>
+      </div>
+    </div>
+    <div class="dialog-footer">
+      <form method="dialog">
+        <button class="btn btn-dark" value="close" autofocus>닫기</button>
+      </form>
+    </div>
+  </dialog>
+</body>
+</html>

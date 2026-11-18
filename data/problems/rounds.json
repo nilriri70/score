@@ -1,0 +1,33 @@
+[
+  {
+    "id": "sample_01",
+    "name": "대표기출따라하기",
+    "file": "sample_01.xlsm",
+    "description": "컴퓨터활용능력 2급 실기 대표기출 샘플",
+    "answer_spec": {
+      "basic_1": {
+        "cells": {}
+      },
+      "basic_2": {
+        "sub_tasks": []
+      },
+      "basic_3": {
+        "require_cf": false
+      },
+      "calc": [],
+      "analysis_1": {
+        "cells": {}
+      },
+      "analysis_2": {
+        "cells": {}
+      }
+    }
+  },
+  {
+    "id": "mock_01",
+    "name": "모의고사 1회 (예시)",
+    "file": "sample_01.xlsm",
+    "description": "컴퓨터활용능력 2급 실기 모의고사 1회 뼈대",
+    "answer_spec": {}
+  }
+]
