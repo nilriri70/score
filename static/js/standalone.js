@@ -28,8 +28,8 @@ const SEED_SUBMISSIONS = [
 ];
 
 const PIE_COLORS = [
-  "#2f66d0", "#dc3912", "#ff9900", "#109618", "#990099",
-  "#0099c6", "#dd4477", "#66aa00", "#b82e2e", "#316395", "#8e24aa",
+  "#1D2B9C", "#5A92C9", "#B951F0", "#EDE765", "#879ECF",
+  "#3949AB", "#7986CB", "#AB47BC", "#4FC3F7", "#FFD54F", "#283593",
 ];
 
 const state = {
@@ -585,7 +585,7 @@ function renderRankingChart(canvasId, stateKey, rows) {
   if (!canvas || typeof Chart === "undefined") return;
   if (state[stateKey]) state[stateKey].destroy();
 
-  const colors = rows.map((_, i) => (i === 0 ? "#b47b38" : i === 1 ? "#facc15" : i === 2 ? "#f9a8d4" : "#b8bec8"));
+  const colors = rows.map((_, i) => (i === 0 ? "#1D2B9C" : i === 1 ? "#B951F0" : i === 2 ? "#EDE765" : "#879ECF"));
 
   state[stateKey] = new Chart(canvas, {
     type: "bar",
