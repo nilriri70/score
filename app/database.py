@@ -1,10 +1,30 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "submissions.db"
+
+def _resolve_db_path() -> Path:
+    """Vercel 등 읽기 전용 환경에서는 /tmp 경로를 사용합니다."""
+    if os.environ.get("VERCEL"):
+        return Path("/tmp/submissions.db")
+    local_path = Path(__file__).resolve().parent.parent / "data" / "submissions.db"
+    try:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        test_file = local_path.parent / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        return local_path
+    except OSError:
+        return Path("/tmp/submissions.db")
+
+
+DB_PATH = _resolve_db_path()
+
+
+_INITIALIZED = False
 
 
 def get_connection() -> sqlite3.Connection:
@@ -17,6 +37,7 @@ def get_connection() -> sqlite3.Connection:
 
 def init_db() -> None:
     """테이블을 생성하고 초기 데모 데이터를 시드합니다."""
+    global _INITIALIZED
     with get_connection() as conn:
         conn.execute(
             """
@@ -40,6 +61,12 @@ def init_db() -> None:
         count = conn.execute("SELECT COUNT(*) FROM submissions").fetchone()[0]
         if count == 0:
             _seed_demo_data(conn)
+    _INITIALIZED = True
+
+
+def _ensure_initialized() -> None:
+    if not _INITIALIZED:
+        init_db()
 
 
 def _seed_demo_data(conn: sqlite3.Connection) -> None:
@@ -80,6 +107,7 @@ def save_submission(
     passed: bool,
 ) -> None:
     """채점 결과를 DB에 저장합니다."""
+    _ensure_initialized()
     with get_connection() as conn:
         conn.execute(
             """
@@ -105,6 +133,7 @@ def save_submission(
 
 def get_overview_stats(round_id: str | None = None) -> dict[str, Any]:
     """인원수, 평균점수 및 학생/선생님 누적점수 순위를 반환합니다."""
+    _ensure_initialized()
     with get_connection() as conn:
         where = "WHERE round_id = ?" if round_id else ""
         params = (round_id,) if round_id else ()
@@ -158,6 +187,7 @@ def _bucket_distribution(values: list[int], bins: list[tuple[str, int, int, bool
 
 def get_round_statistics(round_id: str) -> dict[str, Any]:
     """특정 회차의 총점 및 문제1~4 구간별 분포 통계를 반환합니다."""
+    _ensure_initialized()
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT total_score, score_p1, score_p2, score_p3, score_p4 FROM submissions WHERE round_id = ?",
